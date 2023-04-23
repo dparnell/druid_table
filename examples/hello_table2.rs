@@ -8,17 +8,14 @@ use druid_table::{
 use druid::im::{vector, Vector};
 use druid::lens::{Identity, Index};
 use druid::theme::PLACEHOLDER_COLOR;
-use druid::widget::{
-    Button, Checkbox, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
-    RadioGroup, RawLabel, SizedBox, Stepper, ViewSwitcher,
-};
+use druid::widget::{Button, Checkbox, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding, RadioGroup, RawLabel, SizedBox, Stepper, ViewSwitcher};
 use druid::{theme, Color};
 use druid::{
     AppLauncher, Data, Env, Lens, LensExt, LocalizedString, Widget, WidgetExt, WindowDesc,
 };
-use druid_bindings::*;
 use std::cell::RefCell;
 use std::fmt;
+use druid_table::bindings::{Property, WidgetBindingExt};
 
 const WINDOW_TITLE: LocalizedString<HelloState> = LocalizedString::new("Hello Table!");
 
@@ -128,7 +125,7 @@ fn build_main_widget() -> impl Widget<HelloState> {
     let headings_control = Flex::column()
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .with_child(decor(Label::new("Headings to show")))
-        .with_child(RadioGroup::new(vec![
+        .with_child(RadioGroup::column(vec![
             ("Just cells", ShowHeadings::JustCells),
             ("Column headings", ShowHeadings::One(TableAxis::Columns)),
             ("Row headings", ShowHeadings::One(TableAxis::Rows)),
@@ -179,11 +176,12 @@ fn build_main_widget() -> impl Widget<HelloState> {
         |sh, _, _| {
             let table = build_table(sh.clone()).lens(HelloState::items);
             table
+                /*
                 .binding(
                     HelloState::table_selection
                         .bind(TableSelectionProp::default())
                         .back(),
-                )
+                ) */
                 .boxed()
         },
     )
@@ -202,7 +200,7 @@ fn decor<T: Data>(label: Label<T>) -> SizedBox<T> {
         .expand_width()
 }
 
-fn group<T: Data, W: Widget<T> + 'static>(w: W) -> Padding<T> {
+fn group<T: Data, W: Widget<T> + 'static>(w: W) -> Padding<T, Container<T>> {
     w.border(Color::WHITE, 0.5).padding(5.)
 }
 

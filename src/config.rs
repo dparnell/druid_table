@@ -32,6 +32,23 @@ pub struct ResolvedTableConfig {
     pub(crate) focus_color: Color,
 }
 
+impl Default for ResolvedTableConfig {
+    fn default() -> Self {
+        ResolvedTableConfig {
+            col_header_height: DEFAULT_COL_HEADER_HEIGHT,
+            row_header_width: DEFAULT_ROW_HEADER_WIDTH,
+            header_background: Color::rgb8(0x9C, 0x9C, 0x9C),
+            header_selected_background: Color::rgb8(0xB0, 0xEE, 0xFF),
+            cells_background: Color::rgb8(0xFF, 0xFF, 0xFF),
+            cells_border: Color::rgb8(0x00, 0x00, 0x00),
+            cell_border_thickness: 0.5,
+            cell_padding: 2.0,
+            selection_color: Color::rgb8(0xB0, 0xEE, 0xFF),
+            focus_color: Color::rgb8(0x4D, 0x58, 0xD8),
+        }
+    }
+}
+
 impl ResolvedTableConfig {
     pub(crate) fn cross_axis_length(&self, axis: &TableAxis) -> f64 {
         match axis {
@@ -54,7 +71,7 @@ impl TableConfig {
             row_header_width: DEFAULT_ROW_HEADER_WIDTH.into(),
             header_background: theme::BACKGROUND_DARK.into(),
             header_selected_background: theme::PLACEHOLDER_COLOR.into(),
-            cells_background: theme::LABEL_COLOR.into(),
+            cells_background: theme::BACKGROUND_LIGHT.into(),
             cells_border: theme::BORDER_LIGHT.into(),
             cell_border_thickness: 0.5.into(),
             cell_padding: 2.0.into(),

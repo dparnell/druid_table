@@ -15,11 +15,11 @@ use crate::ensured_pool::EnsuredPool;
 use crate::render_ext::RenderContextExt;
 use crate::selection::{CellDemap, CellRect, SingleCell, TableSelection};
 use crate::table::{PixelRange, TableState};
-use crate::{Remap, RemapSpec};
-use druid_bindings::{bindable_self_body, BindableAccess};
+use crate::{bindable_self_body, Remap, RemapSpec};
 
 use std::ops::Deref;
 use std::sync::Arc;
+use crate::bindings::BindableAccess;
 
 pub trait CellsDelegate<TableData: IndexedData>:
     DisplayFactory<TableData::Item> + Remapper<TableData>
@@ -410,31 +410,6 @@ impl<TableData: IndexedData> Widget<TableState<TableData>> for Cells<TableData> 
             });
             //log::info!("Wanted to forward event to focused cell {:?} {:?}", event, delivered);
         }
-
-        if let Event::AnimFrame(nanos) = event {
-            if let (Ok(mut anim_guard), Ok(mut interp_guard)) =
-                (data.animator.lock(), data.interp.lock())
-            {
-                let overrides = &mut data.overrides;
-                let interp = &mut *interp_guard;
-                anim_guard.advance_by(*nanos as f64, move |anim_ctx| {
-                    if let Err(e) = interp.interp(anim_ctx, overrides) {
-                        log::warn!("Issue animating table {:?}", e)
-                    }
-                });
-
-                ctx.request_layout();
-
-                if anim_guard.running() {
-                    ctx.request_anim_frame();
-                } else {
-                    data.overrides
-                        .measure
-                        .for_each_mut(|_, ranges| ranges.clear());
-                    *interp_guard = Default::default();
-                }
-            }
-        }
     }
 
     fn lifecycle(
@@ -498,12 +473,6 @@ impl<TableData: IndexedData> Widget<TableState<TableData>> for Cells<TableData> 
             _ => true,
         };
 
-        if let Ok(a) = data.animator.lock() {
-            if a.running() {
-                ctx.request_anim_frame();
-            }
-        }
-
         if !editor_valid {
             self.editing = Editing::Inactive;
             ctx.children_changed();
@@ -558,7 +527,7 @@ impl<TableData: IndexedData> Widget<TableState<TableData>> for Cells<TableData> 
                 let bc = BoxConstraints::tight(size).loosen();
                 data.table_data.with(single_cell.log.row, |row| {
                     child.layout(ctx, &bc, row, env);
-                    child.set_origin(ctx, row, env, origin)
+                    child.set_origin(ctx, origin)
                 });
             }
         }
@@ -598,7 +567,7 @@ impl<TableData: IndexedData> Widget<TableState<TableData>> for Cells<TableData> 
                                     env,
                                 );
                                 // TODO: could align the given size to different edge/corner
-                                cell_pod.set_origin(ctx, row, env, vis_rect.origin());
+                                cell_pod.set_origin(ctx, vis_rect.origin());
                             }
                         }
                     }

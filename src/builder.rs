@@ -6,7 +6,7 @@ use crate::data::{IndexedData, IndexedDataDiffer, RefreshDiffer};
 use crate::headings::{HeadersFromIndices, StaticHeader, SuppliedHeaders};
 use crate::{DisplayFactory, HeaderBuild, ReadOnly, Table, WidgetCell};
 use druid::lens::Identity;
-use druid::{theme, Data, KeyOrValue};
+use druid::{theme, Data, KeyOrValue, Env};
 use im::Vector;
 use std::marker::PhantomData;
 
@@ -56,11 +56,11 @@ impl<TableData: IndexedData> TableBuilder<String, TableData> {
         TableBuilder {
             table_columns: Vec::new(),
             row_header_delegate: Box::new(WidgetCell::text_configured(
-                |rl| rl.with_text_color(theme::LABEL_COLOR),
+                |rl| rl.with_text_color(theme::TEXT_COLOR),
                 || ReadOnly::new(|br: &LogIdx| br.0.to_string()),
             )),
             column_header_delegate: Box::new(WidgetCell::text_configured(
-                |rl| rl.with_text_color(theme::LABEL_COLOR),
+                |rl| rl.with_text_color(theme::TEXT_COLOR),
                 || Identity,
             )),
             table_config: TableConfig::new(),
@@ -82,7 +82,7 @@ impl<ColumnHeader, TableData: IndexedData> TableBuilder<ColumnHeader, TableData>
         TableBuilder {
             table_columns: Vec::new(),
             row_header_delegate: Box::new(WidgetCell::text_configured(
-                |rl| rl.with_text_color(theme::LABEL_COLOR),
+                |rl| rl.with_text_color(theme::TEXT_COLOR),
                 || ReadOnly::new(|br: &LogIdx| br.0.to_string()),
             )),
             column_header_delegate: Box::new(column_header_delegate),

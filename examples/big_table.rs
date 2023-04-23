@@ -7,7 +7,6 @@ use druid_table::{
 use core::fmt;
 use druid::lens::Map;
 use druid::{AppLauncher, Color, Data, Env, Event, EventCtx, PaintCtx, Widget, WindowDesc};
-use druid_bindings::Property;
 use druid_table::numbers_table::LogIdxTable;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
@@ -161,7 +160,7 @@ fn build_root_widget() -> Table<LogIdxTable> {
         Some(cols),
         table_config,
         measures,
-        Box::new(RefreshDiffer),
+        Box::new(RefreshDiffer)
     )
 }
 

@@ -5,25 +5,18 @@ use druid_table::{
     Table, TableAxis, TableBuilder, TableSelection, TableSelectionProp, WidgetCell,
 };
 
-use crate::WordOrder::{SubjectObjectVerb, SubjectVerbObject};
 use druid::im::{vector, Vector};
 use druid::kurbo::CircleSegment;
 use druid::theme::PLACEHOLDER_COLOR;
-use druid::widget::{
-    Button, Checkbox, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding,
-    Painter, RadioGroup, RawLabel, SizedBox, Stepper, TextBox, ViewSwitcher,
-};
-use druid::{
-    AppLauncher, Data, Env, FontDescriptor, FontFamily, Lens, LensExt, LocalizedString, PaintCtx,
-    RenderContext, Widget, WidgetExt, WindowDesc,
-};
-use druid::{Color, MenuDesc};
-use druid_bindings::*;
-use druid_widget_nursery::DropdownSelect;
+use druid::widget::{Button, Checkbox, Container, CrossAxisAlignment, Flex, Label, LineBreaking, MainAxisAlignment, Padding, Painter, RadioGroup, RawLabel, SizedBox, Stepper, TextBox, ViewSwitcher};
+use druid::{AppLauncher, Data, Env, FontDescriptor, FontFamily, Lens, LensExt, LocalizedString, Menu, PaintCtx, RenderContext, Widget, WidgetExt, WindowDesc, WindowId};
+use druid::{Color};
+
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::fmt;
+use druid_table::bindings::{Property, WidgetBindingExt};
 
 const WINDOW_TITLE: LocalizedString<HelloState> = LocalizedString::new("Hello Table!");
 
@@ -157,7 +150,7 @@ fn build_main_widget() -> impl Widget<HelloState> {
     let headings_control = Flex::column()
         .cross_axis_alignment(CrossAxisAlignment::Start)
         .with_child(decor(Label::new("Headings to show")))
-        .with_child(RadioGroup::new(vec![
+        .with_child(RadioGroup::column(vec![
             ("Just cells", ShowHeadings::JustCells),
             ("Column headings", ShowHeadings::One(TableAxis::Columns)),
             ("Row headings", ShowHeadings::One(TableAxis::Rows)),
@@ -205,8 +198,8 @@ fn build_main_widget() -> impl Widget<HelloState> {
 
     let vs = ViewSwitcher::new(
         |ts: &HelloState, _| ts.settings.clone(),
-        |sh, _, _| {
-            let table = build_table(sh.clone()).lens(HelloState::items);
+        |sh, _, env| {
+            let table = build_table(sh.clone(), env).lens(HelloState::items);
             table
                 .binding(
                     TableSelectionProp::default()
@@ -231,11 +224,11 @@ fn decor<T: Data>(label: Label<T>) -> SizedBox<T> {
         .expand_width()
 }
 
-fn group<T: Data, W: Widget<T> + 'static>(w: W) -> Padding<T> {
+fn group<T: Data, W: Widget<T> + 'static>(w: W) -> Padding<T, Container<T>> {
     w.border(Color::WHITE, 0.5).padding(5.)
 }
 
-fn build_table(settings: Settings) -> Table<Vector<HelloRow>> {
+fn build_table(settings: Settings, env: &Env) -> Table<Vector<HelloRow>> {
     let measurement_type = if settings.col_fixed {
         AxisMeasurementType::Uniform
     } else {
@@ -270,18 +263,7 @@ fn build_table(settings: Settings) -> Table<Vector<HelloRow>> {
             WidgetCell::text_configured(|rl| rl.with_text_size(17.), || HelloRow::westernised),
         )
         .with(column("Who knows?", pie_cell(|| HelloRow::who_knows)).sort(SortDirection::Ascending))
-        .with_column(
-            "Word order",
-            WidgetCell::new(
-                |_| {
-                    DropdownSelect::build_widget(vec![
-                        ("Subject Verb Object", SubjectVerbObject),
-                        ("Subject Object Verb", SubjectObjectVerb),
-                    ])
-                },
-                || HelloRow::word_order,
-            ),
-        )
+
         .with_column(
             "Greeting 2 with very long column name",
             WidgetCell::text_configured(
@@ -306,24 +288,24 @@ fn build_table(settings: Settings) -> Table<Vector<HelloRow>> {
         .build()
 }
 
-pub fn menu<T: Data>() -> MenuDesc<T> {
-    let mut base = MenuDesc::empty();
+fn make_menu(_: Option<WindowId>, _state: &HelloState, _: &Env) -> Menu<HelloState> {
+    let mut base = Menu::empty();
     #[cfg(target_os = "macos")]
     {
         base = base.append(druid::platform_menus::mac::application::default())
     }
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
-        base = base.append(druid::platform_menus::win::file::default());
+        base = base.entry(druid::platform_menus::win::file::default());
     }
-    base.append(
-        MenuDesc::new(LocalizedString::new("common-menu-edit-menu"))
-            .append(druid::platform_menus::common::undo())
-            .append(druid::platform_menus::common::redo())
-            .append_separator()
-            .append(druid::platform_menus::common::cut().disabled())
-            .append(druid::platform_menus::common::copy())
-            .append(druid::platform_menus::common::paste()),
+    base.entry(
+        Menu::new(LocalizedString::new("common-menu-edit-menu"))
+            .entry(druid::platform_menus::common::undo())
+            .entry(druid::platform_menus::common::redo())
+            .separator()
+            .entry(druid::platform_menus::common::cut().enabled(false))
+            .entry(druid::platform_menus::common::copy())
+            .entry(druid::platform_menus::common::paste()),
     )
 }
 
@@ -332,7 +314,7 @@ pub fn main() {
 
     // describe the main window
     let main_window = WindowDesc::new(build_main_widget())
-        .menu(menu())
+        .menu(make_menu)
         .title(WINDOW_TITLE)
         .window_size((1100.0, 500.0));
 
@@ -374,7 +356,6 @@ pub fn main() {
 
     // start the application
     AppLauncher::with_window(main_window)
-        .use_simple_logger()
         .launch(initial_state)
         .expect("Failed to launch application");
 }

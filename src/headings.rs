@@ -15,13 +15,13 @@ use crate::ensured_pool::EnsuredPool;
 use crate::numbers_table::LogIdxTable;
 use crate::render_ext::RenderContextExt;
 use crate::table::{PixelRange, TableState};
-use crate::{AxisMeasurementType, IndexedData, Remap, SortDirection};
+use crate::{AxisMeasurementType, bindable_self_body, IndexedData, Remap, SortDirection};
 use druid::kurbo::PathEl;
-use druid_bindings::{bindable_self_body, BindableAccess};
 use im::Vector;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use crate::bindings::BindableAccess;
 
 pub trait StaticHeader {
     fn header_levels() -> usize;
@@ -580,7 +580,7 @@ where
                                 if data.selection.fully_selects_heading(self.axis, moving_idx)
                                     && self.allow_moves =>
                             {
-                                ctx.set_cursor(&Cursor::OpenHand)
+                                ctx.set_cursor(&Cursor::ResizeLeftRight)
                             }
                             _ => ctx.clear_cursor(),
                         }
@@ -724,7 +724,7 @@ where
                                                 );
                                                 let origin =
                                                     axis.cell_origin(field_pix.p_0, level_pix.p_0);
-                                                pod.set_origin(ctx, header, env, origin);
+                                                pod.set_origin(ctx, origin);
                                             }
                                         });
                                     }

@@ -1,10 +1,8 @@
 use crate::config::{DEFAULT_COL_HEADER_HEIGHT, DEFAULT_ROW_HEADER_WIDTH};
-use crate::interp::{HasInterp, Interp, InterpCoverage, InterpNode, InterpResult};
 use crate::selection::CellRect;
 use crate::table::PixelRange;
 use crate::{AxisMeasurementType, Remap};
 use druid::{Cursor, Data, Point, Rect, Size};
-use druid_widget_nursery::animation::{AnimationCtx, AnimationId};
 use float_ord::FloatOrd;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -64,60 +62,6 @@ impl AxisPair<AxisMeasure> {
 
     pub(crate) fn measured_size(&self) -> Size {
         self.map(|m| m.total_pixel_length()).size()
-    }
-}
-
-impl<T: HasInterp + Default> HasInterp for AxisPair<T> {
-    type Interp = AxisPairInterp<T>;
-}
-
-#[derive(Default)]
-pub struct AxisPairInterp<T: HasInterp> {
-    pub row: InterpNode<T>,
-    pub col: InterpNode<T>,
-}
-
-impl<T: HasInterp> Debug for AxisPairInterp<T>
-where
-    T::Interp: Debug,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // TODO: debug
-        f.debug_struct("AxisPairInterp").finish()
-    }
-}
-
-impl<T: HasInterp + Default> Interp for AxisPairInterp<T> {
-    type Value = AxisPair<T>;
-
-    fn interp(&mut self, ctx: &AnimationCtx, val: &mut Self::Value) -> InterpResult {
-        self.row.interp(ctx, &mut val.row)?;
-        self.col.interp(ctx, &mut val.col)
-    }
-
-    fn coverage(&self) -> InterpCoverage {
-        self.col.coverage() + self.row.coverage()
-    }
-
-    fn select_animation_segment(self, idx: AnimationId) -> Result<Self, Self> {
-        Ok(Self {
-            row: self.row.select_anim(idx),
-            col: self.col.select_anim(idx),
-        })
-    }
-
-    fn merge(self, other: Self) -> Self {
-        Self {
-            row: self.row.merge(other.row),
-            col: self.col.merge(other.col),
-        }
-    }
-
-    fn build(start: Self::Value, end: Self::Value) -> Self {
-        Self {
-            row: start.row.tween(end.row),
-            col: start.col.tween(end.col),
-        }
     }
 }
 

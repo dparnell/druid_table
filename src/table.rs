@@ -1,27 +1,21 @@
-use crate::axis_measure::{AxisMeasure, AxisPair, PixelLengths, TableAxis, VisOffset};
+use crate::axis_measure::{AxisMeasure, AxisPair, TableAxis, VisOffset};
 use crate::cells::CellsDelegate;
 use crate::config::ResolvedTableConfig;
-use crate::data::{IndexedDataDiff, IndexedDataDiffer, IndexedDataOp, RemapDetails};
+use crate::data::{IndexedDataDiff, IndexedDataDiffer, RemapDetails};
 use crate::headings::HeadersFromData;
-use crate::interp::{EnterExit, HasInterp, Interp, InterpCoverage, InterpNode, InterpResult};
 use crate::selection::{CellDemap, SingleCell};
-use crate::{
-    Cells, DisplayFactory, Headings, IndexedData, LogIdx, Remap, RemapSpec, Remapper, TableConfig,
-    TableSelection, VisIdx,
-};
-use druid::widget::{Axis, ClipBox, Scope, ScopePolicy, ScopeTransfer, Scroll};
+use crate::{Cells, DisplayFactory, Headings, IndexedData, LogIdx, Remap, RemapSpec, Remapper, TableConfig, TableSelection, VisIdx, bindable_self_body};
+use druid::widget::{ClipBox, Scope, ScopePolicy, ScopeTransfer, Scroll};
 use druid::{
     BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, Lens, LensExt, LifeCycle, LifeCycleCtx,
     PaintCtx, Point, Rect, Size, UpdateCtx, Widget, WidgetExt, WidgetPod,
 };
-use druid_bindings::*;
-use druid_widget_nursery::animation::{AnimationCtx, AnimationId, Animator, SimpleCurve};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::net::Shutdown::Read;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::sync::{Arc};
+use std::time::{SystemTime};
+use crate::bindings::{AxisPositionProperty, BindableAccess, Property, ReadScrollRect, WidgetBindingExt};
 
 pub struct HeaderBuild<HeadersSource: HeadersFromData + 'static> {
     source: HeadersSource,
@@ -90,62 +84,6 @@ impl PixelRange {
     }
 }
 
-impl EnterExit for PixelRange {
-    fn enter(&self) -> Self {
-        Self {
-            p_0: self.p_0,
-            p_1: self.p_0,
-        }
-    }
-
-    fn exit(&self) -> Self {
-        self.enter()
-    }
-}
-
-impl HasInterp for PixelRange {
-    type Interp = PixelRangeInterp;
-}
-
-#[derive(Debug, Default)]
-pub struct PixelRangeInterp {
-    pub p_0: InterpNode<f64>,
-    pub p_1: InterpNode<f64>,
-}
-
-impl Interp for PixelRangeInterp {
-    type Value = PixelRange;
-
-    fn interp(&mut self, ctx: &AnimationCtx, val: &mut Self::Value) -> InterpResult {
-        self.p_0.interp(ctx, &mut val.p_0)?;
-        self.p_1.interp(ctx, &mut val.p_1)
-    }
-
-    fn coverage(&self) -> InterpCoverage {
-        self.p_0.coverage() + self.p_1.coverage()
-    }
-
-    fn select_animation_segment(self, idx: AnimationId) -> Result<Self, Self> {
-        Ok(Self {
-            p_0: self.p_0.select_anim(idx),
-            p_1: self.p_1.select_anim(idx),
-        })
-    }
-
-    fn merge(self, other: Self) -> Self {
-        Self {
-            p_0: self.p_0.merge(other.p_0),
-            p_1: self.p_1.merge(other.p_1),
-        }
-    }
-
-    fn build(start: Self::Value, end: Self::Value) -> Self {
-        Self {
-            p_0: start.p_0.tween(end.p_0),
-            p_1: start.p_1.tween(end.p_1),
-        }
-    }
-}
 
 struct ExitingRow {
     pub(crate) y_0: f64,
@@ -159,45 +97,6 @@ pub(crate) struct TableOverrides {
     pub(crate) measure: AxisPair<HashMap<LogIdx, PixelRange>>,
     // exiting rows
     //pub(crate) exiting_rows: Vec<ExitingRow>
-}
-
-impl HasInterp for TableOverrides {
-    type Interp = TableOverridesInterp;
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct TableOverridesInterp {
-    pub(crate) measure: InterpNode<AxisPair<HashMap<LogIdx, PixelRange>>>,
-}
-
-impl Interp for TableOverridesInterp {
-    type Value = TableOverrides;
-
-    fn interp(&mut self, ctx: &AnimationCtx, val: &mut Self::Value) -> InterpResult {
-        self.measure.interp(ctx, &mut val.measure)
-    }
-
-    fn coverage(&self) -> InterpCoverage {
-        self.measure.coverage()
-    }
-
-    fn select_animation_segment(self, idx: AnimationId) -> Result<Self, Self> {
-        Ok(Self {
-            measure: self.measure.select_anim(idx),
-        })
-    }
-
-    fn merge(self, other: Self) -> Self {
-        Self {
-            measure: self.measure.merge(other.measure),
-        }
-    }
-
-    fn build(start: Self::Value, end: Self::Value) -> Self {
-        Self {
-            measure: start.measure.tween(end.measure),
-        }
-    }
 }
 
 #[derive(Data, Clone, Lens)]
@@ -214,16 +113,12 @@ pub(crate) struct TableState<TableData> {
     pub(crate) cells_del: Arc<dyn CellsDelegate<TableData>>,
     pub(crate) last_diff: Option<IndexedDataDiff>,
     #[data(ignore)]
-    pub(crate) animator: Arc<Mutex<Animator>>,
-    #[data(ignore)]
     pub(crate) overrides: TableOverrides,
-    pub(crate) interp: Arc<Mutex<InterpNode<TableOverrides>>>,
 }
 
 impl<TableData: IndexedData> TableState<TableData> {
     pub fn new(
         config: TableConfig,
-        resolved_config: ResolvedTableConfig,
         data: TableData,
         measures: AxisPair<AxisMeasure>,
         cells_del: Arc<dyn CellsDelegate<TableData>>,
@@ -236,7 +131,7 @@ impl<TableData: IndexedData> TableState<TableData> {
         let mut state = TableState {
             scroll_rect: Rect::ZERO,
             config,
-            resolved_config,
+            resolved_config: ResolvedTableConfig::default(),
             table_data: data,
             remap_specs: AxisPair::new(cells_del.initial_spec(), RemapSpec::default()),
             remaps,
@@ -244,9 +139,7 @@ impl<TableData: IndexedData> TableState<TableData> {
             measures,
             cells_del,
             last_diff: None,
-            animator: Arc::new(Mutex::new(Animator::default())),
             overrides: TableOverrides::default(),
-            interp: Arc::new(Mutex::new(Default::default())),
         };
         state.remap_rows();
         state.refresh_measure(TableAxis::Rows);
@@ -407,6 +300,7 @@ type TableChild<TableData> = WidgetPod<
 
 struct TableScopePolicy<TableData> {
     config: TableConfig,
+    resolved_config: Option<ResolvedTableConfig>,
     measures: AxisPair<AxisMeasure>,
     cells_delegate: Arc<dyn CellsDelegate<TableData>>,
     differ: Box<dyn IndexedDataDiffer<TableData>>,
@@ -422,6 +316,7 @@ impl<TableData> TableScopePolicy<TableData> {
     ) -> Self {
         TableScopePolicy {
             config,
+            resolved_config: None,
             measures,
             cells_delegate,
             differ,
@@ -435,12 +330,10 @@ impl<TableData: IndexedData> ScopePolicy for TableScopePolicy<TableData> {
     type State = TableState<TableData>;
     type Transfer = TableScopeTransfer<TableData>;
 
-    fn create(self, inner: &Self::In, env: &Env) -> (Self::State, Self::Transfer) {
-        let rc = self.config.resolve(env);
+    fn create(self, inner: &Self::In) -> (Self::State, Self::Transfer) {
         (
             TableState::new(
                 self.config,
-                rc,
                 inner.clone(),
                 self.measures,
                 self.cells_delegate,
@@ -468,7 +361,7 @@ impl<TableData: IndexedData> ScopeTransfer for TableScopeTransfer<TableData> {
     type In = TableData;
     type State = TableState<TableData>;
 
-    fn read_input(&self, state: &mut Self::State, input: &Self::In, _env: &Env) {
+    fn read_input(&self, state: &mut Self::State, input: &Self::In) {
         log::info!("Read input table data to TableState");
         if !input.same(&state.table_data) {
             log::info!("Actually wrote table data to TableState");
@@ -482,143 +375,6 @@ impl<TableData: IndexedData> ScopeTransfer for TableScopeTransfer<TableData> {
         }
     }
 
-    fn update_computed(
-        &self,
-        old_state: &Self::State,
-        state: &mut Self::State,
-        _env: &Env,
-    ) -> bool {
-        log::info!(
-            "Update computed TableScope data changed:{}",
-            !old_state.same(state)
-        );
-
-        let new_diff = self.differ.diff(&old_state.table_data, &state.table_data);
-
-        let remap_specs_same = old_state
-            .remap_specs
-            .zip_with(&state.remap_specs, |old, new| old.same(new));
-
-        if (!remap_specs_same[TableAxis::Rows]) || new_diff.is_some() {
-            state.remap_rows();
-        }
-
-        let remaps_same = old_state
-            .remaps
-            .zip_with(&state.remaps, |old, new| old.same(new));
-
-        // Record old positions needed for animations like move
-        let mut start_table_overrides = TableOverrides::default();
-
-        if let Some(new_diff) = &new_diff {
-            for op in new_diff.ops() {
-                match op {
-                    IndexedDataOp::Move(old_log_idx, log_idx) => {
-                        if let Some(old_vis_idx) =
-                            state.remaps.get_vis_idx(TableAxis::Rows, old_log_idx)
-                        {
-                            if let Some(px) =
-                                state.measures[TableAxis::Rows].pix_range_from_vis(old_vis_idx)
-                            {
-                                start_table_overrides.measure[TableAxis::Rows].insert(log_idx, px);
-                            }
-                        }
-                    }
-                    IndexedDataOp::Delete(_old_log_idx) => {
-
-                        // if let Some(old_vis_idx) = state.remaps.get_vis_idx(TableAxis::Rows, old_log_idx) {
-                        //     if let Some((y_0, y_1)) = state.measures[TableAxis::Rows].pix_range_from_vis(old_vis_idx) {
-                        //         if let Ok(mut device) = Device::new(){
-                        //             if let Ok(mut target) = device.bitmap_target(1000, (y_1 - y_0) as usize, 1.0){
-                        //                 let ctx = target.render_context();
-                        //
-                        //             }
-                        //         }
-                        //         //start_table_overrides.current_rows.insert(log_idx, RowOverrides { y_0, y_1 });
-                        //     }
-                        // }
-                    }
-                    _ => (),
-                }
-            }
-        }
-
-        remaps_same.for_each(|axis, same| {
-            if !same {
-                state.refresh_measure(axis);
-            }
-        });
-
-        let mut end_table_overrides = TableOverrides::default();
-        if let Some(new_diff) = &new_diff {
-            let actually_new = match &state.last_diff {
-                None => true,
-                Some(last_diff) => !last_diff.same(new_diff),
-            };
-
-            if actually_new {
-                if new_diff.is_refresh() {
-                } else {
-                    for op in new_diff.ops() {
-                        match op {
-                            IndexedDataOp::Move(_old_log_idx, log_idx) => {
-                                if let Some(vis_idx) =
-                                    state.remaps.get_vis_idx(TableAxis::Rows, log_idx)
-                                {
-                                    if let Some(px) =
-                                        state.measures[TableAxis::Rows].pix_range_from_vis(vis_idx)
-                                    {
-                                        end_table_overrides.measure[TableAxis::Rows]
-                                            .insert(log_idx, px);
-                                    }
-                                }
-                            }
-                            IndexedDataOp::Insert(log_idx) => {
-                                if let Some(vis_idx) =
-                                    state.remaps.get_vis_idx(TableAxis::Rows, log_idx)
-                                {
-                                    if let Some(px) =
-                                        state.measures[TableAxis::Rows].pix_range_from_vis(vis_idx)
-                                    {
-                                        end_table_overrides.measure[TableAxis::Rows]
-                                            .insert(log_idx, px);
-                                    }
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-                let new_interp = if let Ok(mut animator) = state.animator.lock() {
-                    let anim_id = animator
-                        .new_animation()
-                        .curve(SimpleCurve::EaseIn)
-                        .duration(Duration::from_millis(500))
-                        .id();
-
-                    //let remove_ov_ai = animator.new_animation().after(anim_id).id();
-
-                    state.overrides.measure[TableAxis::Rows]
-                        .extend(start_table_overrides.measure[TableAxis::Rows].clone());
-                    start_table_overrides
-                        .tween(end_table_overrides.clone())
-                        .select_anim(anim_id)
-                    //  .merge(end_table_overrides.tween(Default::default()).select_anim(remove_ov_ai))
-                } else {
-                    Default::default()
-                };
-                if !new_interp.is_noop() {
-                    if let Ok(mut interp) = state.interp.lock() {
-                        interp.merge_ref(new_interp);
-                    }
-                }
-            }
-        }
-
-        state.last_diff = new_diff.or(state.last_diff.take());
-
-        true
-    }
 }
 
 type LayoutChild<T> = WidgetPod<T, Box<dyn Widget<T>>>;
@@ -692,12 +448,12 @@ impl<T: Data> Widget<T> for TableLayout<T> {
         self.headers.for_each_mut(|t_axis, header_w| {
             if let Some(w) = header_w {
                 let (main, _) = t_axis.pixels_from_point(&corner_point);
-                w.set_origin(ctx, data, env, t_axis.coords(main, 0.).into())
+                w.set_origin(ctx, t_axis.coords(main, 0.).into())
             }
         });
 
         let cells_size = self.cells.layout(ctx, &bc, data, env);
-        self.cells.set_origin(ctx, data, env, corner_point);
+        self.cells.set_origin(ctx, corner_point);
         dbg!(&cells_size);
         cells_size + corner
     }
@@ -753,7 +509,7 @@ impl<TableData: IndexedData> Table<TableData> {
             let (source, render) = hb.content();
             let row_headings = Headings::new(TableAxis::Rows, source, Box::new(render), false);
 
-            let row_scroll = ClipBox::new(row_headings).binding(
+            let row_scroll = ClipBox::managed(row_headings).binding(
                 AxisPositionProperty::VERTICAL
                     .with(TableState::<TableData>::scroll_rect.then(lens!(Rect, y0))),
             );
@@ -764,7 +520,7 @@ impl<TableData: IndexedData> Table<TableData> {
             let (source, render) = cb.content();
 
             let col_headings = Headings::new(TableAxis::Columns, source, Box::new(render), true);
-            let ch_scroll = ClipBox::new(col_headings).binding(
+            let ch_scroll = ClipBox::managed(col_headings).binding(
                 AxisPositionProperty::HORIZONTAL
                     .with(TableState::<TableData>::scroll_rect.then(lens!(Rect, x0))),
             );
@@ -811,6 +567,11 @@ impl<TableData: IndexedData> Widget<TableData> for Table<TableData> {
         data: &TableData,
         env: &Env,
     ) {
+        if let LifeCycle::WidgetAdded = event {
+            if let Some(state) = self.child.widget_mut().state_mut() {
+                state.resolved_config = state.config.resolve(env);
+            }
+        }
         self.child.lifecycle(ctx, event, data, env);
     }
 
@@ -838,8 +599,10 @@ impl<TableData: IndexedData> Widget<TableData> for Table<TableData> {
         env: &Env,
     ) -> Size {
         let size = self.child.layout(ctx, bc, data, env);
+        /*
         self.child
             .set_layout_rect(ctx, data, env, Rect::from_origin_size(Point::ORIGIN, size));
+         */
         size
     }
 
@@ -912,9 +675,9 @@ impl<TableData: IndexedData> Property for TableSelectionProp<TableData> {
     fn initialise_data(
         &self,
         controlled: &Self::Controlled,
-        ctx: &mut EventCtx,
+        _ctx: &mut EventCtx,
         field: &mut Self::Value,
-        env: &Env,
+        _env: &Env,
     ) {
         if let Some(s) = controlled.state() {
             *field = s.selection.clone()
